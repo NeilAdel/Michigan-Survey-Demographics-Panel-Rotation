@@ -14,28 +14,123 @@ function makeChart(id,type,labels,datasets,opts={}){if(charts[id])charts[id].des
 function table(headers,rows){return `<div class="table-wrap"><table><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${v??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 function waveName(m){return m.slice(0,4)+'-'+m.slice(4)}
 async function main(){const d=await(await fetch('./data.json')).json();const app=$('app');
-app.innerHTML=`<div class="stats"><div class="stat"><b>${fmt(d.meta.observations)}</b><span>Respondent-wave records</span></div><div class="stat"><b>${fmt(d.meta.respondent_ids)}</b><span>Distinct interview IDs (ID)</span></div><div class="stat"><b>${d.meta.n_months}</b><span>Monthly waves</span></div><div class="stat"><b>${waveName(d.meta.first_month)}–${waveName(d.meta.last_month)}</b><span>Coverage in supplied extract</span></div><div class="stat"><b>${fmt(d.meta.link_records)}</b><span>Previous-interview links recorded</span></div></div>
-<section><h2>1. Demographic composition over time</h2><p class="desc">Monthly unweighted respondent distributions. Choose a characteristic to inspect how the sample composition changes across waves. Percentages are calculated among valid responses to that variable; missingness is reported separately.</p><div class="controls"><label for="demo-var"><b>Demographic characteristic</b></label><select id="demo-var"></select><label><input type="checkbox" id="weighted"> Show weighted distribution (WT)</label></div><div class="chartbox tall"><canvas id="demo-time"></canvas></div><div id="demo-table"></div></section>
-<section><h2>2. Understanding the rotating panel</h2><p class="desc">This section explains the survey design. It is a guide to the intended interview sequence; the next section shows what is actually recorded in your microdata.</p><div class="flow"><div class="step"><strong>Month 0</strong><span class="pill">Interview 1 · Fresh</span><small>A newly selected respondent completes the first interview.</small></div><div class="step"><strong>Month 6</strong><span class="pill">Interview 2 · Recontact</span><small>The same respondent is invited back about six months later.</small></div><div class="step"><strong>Month 12</strong><span class="pill">Interview 3 · Recontact</span><small>The same respondent may be interviewed for a third and final time, about 12 months after the first interview.</small></div></div><div class="grid"><div><h3>What do the ID variables mean?</h3><ul><li><b>ID:</b> identifier for the current interview record.</li><li><b>IDPREV + DATEPR:</b> identifier and month of the respondent's previous interview (used to link a second interview to the earlier record).</li><li><b>IDPREV2 + DATEPR2:</b> identifier and month of the first interview for a respondent's third interview.</li></ul></div><div><h3>What counts as entry and return?</h3><ul><li><b>Fresh:</b> sample categories marked as a fresh interview.</li><li><b>Recontact:</b> second or third interview categories.</li><li><b>Not the same as attrition:</b> someone absent from one month may simply not be due for a six-month reinterview.</li></ul></div></div><div class="note"><b>Important:</b> The intended schedule is up to three interviews at roughly six-month intervals. Not every respondent completes all three. A respondent who is not observed again cannot automatically be called an attrition case; the person may not yet be due, may have completed the planned sequence, or may have declined / not responded.</div><h3>SAMPLE codes in your codebook</h3><p class="desc">Codes 1, 3 and 6 are grouped as fresh interviews. Codes 2, 4, 5, 7 and 8 are grouped as reinterviews. The labels preserve the different sampling modes used over the survey history.</p><div id="sample-defs"></div></section>
-<section><h2>3. Who enters and who returns? Observed monthly sample composition</h2><p class="desc">Each monthly bar is split into fresh interviews and reinterviews, using the codebook SAMPLE categories. Fresh = codes 1, 3 and 6; recontact = codes 2, 4, 5, 7 and 8. The bars show observed completed interviews, not all people invited and not an attrition rate. Counts may change when the sampling frame or interview mode changes.</p><div class="chartbox"><canvas id="fresh-return"></canvas></div><div class="grid"><div><h3>Sample types by month</h3><div id="sample-table"></div></div><div><h3>Interview method by month</h3><div id="method-table"></div></div></div><h3>Previous-interview links: can we find the earlier record?</h3><p class="desc">For records with IDPREV/DATEPR or IDPREV2/DATEPR2, the dashboard checks whether that earlier interview can be found in this CSV. “Match rate” = recorded previous-interview links matched to a record in this extract ÷ all recorded links. The six-month and twelve-month columns count the observed time gap between linked interviews.</p><div class="note"><b>How to read this chart:</b> A 100% match rate means that almost all previous-interview references in that month could be linked to an earlier record inside this file. It does <b>not</b> mean 100% of respondents returned, and it is <b>not</b> a retention or response rate. People whose previous interview is outside the extract are not counted as a matched link.</div><div class="chartbox"><canvas id="link-chart"></canvas></div><div id="link-table"></div></section>
-<section><h2>4. Recent-wave demographic comparison</h2><p class="desc">Compare the two latest waves in the supplied file. You can change both months. Unweighted and WT-weighted percentages are available.</p><div class="controls"><label>Wave A <select id="wave-a"></select></label><label>Wave B <select id="wave-b"></select></label><label><input type="checkbox" id="compare-weighted"> Use WT-weighted shares</label></div><div id="wave-compare"></div></section>
-<section><h2>5. Compare selected historical waves</h2><p class="desc">Default comparison includes the latest two waves, candidate 2021 gasoline-expectation waves, and the 2024 transition period where available. Select any months in the extract.</p><div class="controls"><label for="multi-waves"><b>Choose waves (Ctrl/Cmd-click for multiple)</b></label><select id="multi-waves" multiple size="7"></select><button class="btn" id="default-waves">Restore suggested waves</button><button class="btn" id="all-waves">Select all</button></div><div class="controls"><label for="multi-demo">Characteristic</label><select id="multi-demo"></select><label><input type="checkbox" id="multi-weighted"> WT-weighted</label></div><div class="chartbox tall"><canvas id="multi-chart"></canvas></div><div id="multi-table"></div></section>
-<section><h2>6. Implications and limitations for LLM persona construction</h2><ul><li>Use observed demographic categories to define persona dimensions; do not invent unobserved characteristics.</li><li>Report both unweighted and weighted profiles where the relevant weight is available and appropriate.</li><li>Do not treat changes in monthly composition as individual panel attrition.</li><li>Keep the 2024 transition visible: the SAMPLE codes distinguish telephone RDD from address-based web samples, and METHOD distinguishes telephone from web interviews.</li><li>Income terciles (YTL3) are relative groups, not constant real-dollar income bands across 1978–2026.</li></ul><div class="note">The general WT variable is shown as a weighted descriptive comparison. Confirm the exact estimand and weight choice with the survey documentation before treating weighted shares as population estimates. WT_HH and WT_QUINTMED are not substituted automatically.</div></section>`;
-const demoNames=Object.keys(d.monthly_demographics);function fillDemo(id){$(id).innerHTML=demoNames.map(n=>`<option>${n}</option>`).join('')}fillDemo('demo-var');fillDemo('multi-demo');
-const allMonths=d.monthly_demographics.Age.rows.map(r=>r.month);function fillWaves(id,selected){$(id).innerHTML=allMonths.map(m=>`<option value="${m}" ${selected.includes(m)?'selected':''}>${waveName(m)}</option>`).join('')}
-fillWaves('wave-a',[d.meta.last_month]);fillWaves('wave-b',[allMonths.at(-2)]);const defaults=d.selected_waves;fillWaves('multi-waves',defaults);
-function renderDemo(){const name=$('demo-var').value,obj=d.monthly_demographics[name],weighted=$('weighted').checked;const cats=obj.categories;const rows=obj.rows;makeChart('demo-time','bar',rows.map(r=>waveName(r.month)),cats.map((c,i)=>({label:c,data:rows.map(r=>(weighted?r.weighted_shares:r.shares)[c]),backgroundColor:palette[i%palette.length],stack:'s'})),{stacked:true,max:100,percent:true});$('demo-table').innerHTML=table(['Month','Valid N','Missing (%)',...cats],rows.map(r=>[waveName(r.month),fmt(r.n_valid),pct(r.missing_pct),...cats.map(c=>pct((weighted?r.weighted_shares:r.shares)[c]))]));}
-$('demo-var').onchange=renderDemo;$('weighted').onchange=renderDemo;renderDemo();
-$('sample-defs').innerHTML=table(['SAMPLE code','Codebook label','Dashboard grouping'],Object.entries(d.sample_labels).map(([k,v])=>[k,v,['1','3','6'].includes(k)?'Fresh interview':'Recontact / reinterview']));
-makeChart('fresh-return','bar',d.panel_monthly.map(r=>waveName(r.month)),[{label:'Fresh sample',data:d.panel_monthly.map(r=>r.fresh),backgroundColor:'#2878b5',stack:'s'},{label:'Recontact sample',data:d.panel_monthly.map(r=>r.recontact),backgroundColor:'#2ca25f',stack:'s'}],{stacked:true});
-$('sample-table').innerHTML=table(['Month','Total','Fresh','Recontact',...Object.values(d.sample_labels)],d.panel_monthly.map(r=>[waveName(r.month),fmt(r.n),fmt(r.fresh),fmt(r.recontact),...Object.values(d.sample_labels).map(k=>fmt(r.sample_counts[k]||0))]));
-const methods=[...new Set(d.panel_monthly.flatMap(r=>Object.keys(r.method_counts)))];$('method-table').innerHTML=table(['Month',...methods],d.panel_monthly.map(r=>[waveName(r.month),...methods.map(k=>fmt(r.method_counts[k]||0))]));
-makeChart('link-chart','line',d.linkage_monthly.map(r=>waveName(r.month)),[{label:'Matched previous links (%)',data:d.linkage_monthly.map(r=>r.match_rate),borderColor:'#2878b5',backgroundColor:'#2878b5',tension:.2}],{max:100,percent:true});
-$('link-table').innerHTML=table(['Month','Recorded links','Matched in extract','Match rate','6-month links','12-month links','Other lags'],d.linkage_monthly.map(r=>[waveName(r.month),fmt(r.links),fmt(r.matched),pct(r.match_rate),fmt(r.six_month),fmt(r.twelve_month),fmt(r.other_lag)]));
-function renderCompare(){const a=$('wave-a').value,b=$('wave-b').value,weighted=$('compare-weighted').checked;const names=demoNames;let rows=[];for(const name of names){const A=d.wave_demographics[a]?.[name],B=d.wave_demographics[b]?.[name];if(!A||!B)continue;for(const c of d.monthly_demographics[name].categories){const av=(weighted?A.weighted_shares:A.shares)[c],bv=(weighted?B.weighted_shares:B.shares)[c];rows.push([name,c,pct(av),pct(bv),av==null||bv==null?'—':(bv-av>=0?'+':'')+(bv-av).toFixed(1)+' pp']);}}$('wave-compare').innerHTML=table(['Characteristic','Category',waveName(a),waveName(b),'Difference (B − A)'],rows)}
-$('wave-a').onchange=renderCompare;$('wave-b').onchange=renderCompare;$('compare-weighted').onchange=renderCompare;renderCompare();
-function renderMulti(){const chosen=[...$('multi-waves').selectedOptions].map(o=>o.value);const name=$('multi-demo').value,obj=d.monthly_demographics[name],weighted=$('multi-weighted').checked;const cats=obj.categories;const lookup=new Map(obj.rows.map(r=>[r.month,r]));const rows=chosen.map(m=>lookup.get(m)).filter(Boolean);makeChart('multi-chart','bar',rows.map(r=>waveName(r.month)),cats.map((c,i)=>({label:c,data:rows.map(r=>(weighted?r.weighted_shares:r.shares)[c]),backgroundColor:palette[i%palette.length],stack:'s'})),{stacked:true,max:100,percent:true});$('multi-table').innerHTML=table(['Month','Valid N','Missing (%)',...cats],rows.map(r=>[waveName(r.month),fmt(r.n_valid),pct(r.missing_pct),...cats.map(c=>pct((weighted?r.weighted_shares:r.shares)[c]))]));if(!rows.length)$('multi-table').innerHTML='<p class="muted">Select at least one wave.</p>'}
-$('multi-waves').onchange=renderMulti;$('multi-demo').onchange=renderMulti;$('multi-weighted').onchange=renderMulti;$('default-waves').onclick=()=>{fillWaves('multi-waves',defaults);renderMulti()};$('all-waves').onclick=()=>{[...$('multi-waves').options].forEach(o=>o.selected=true);renderMulti()};renderMulti();
+app.innerHTML=`<div class="stats">
+<div class="stat"><b>${fmt(d.meta.observations)}</b><span>Interview records</span></div>
+<div class="stat"><b>${d.meta.n_months}</b><span>Monthly survey waves</span></div>
+<div class="stat"><b>${fmt(d.meta.respondent_ids)}</b><span>Distinct interview IDs</span></div>
+</div>
+
+<section><h2>1. Total participants in each survey wave</h2>
+<p class="desc">Number of completed interviews recorded in each month. Repeat participants are counted once in each wave in which they took part.</p>
+<div class="chartbox"><canvas id="total-participants"></canvas></div></section>
+
+<section><h2>2. Demographic composition over time</h2>
+<p class="desc">Choose a demographic characteristic to see how the composition of respondents changes across monthly waves. Select weighted or unweighted percentages.</p>
+<div class="controls"><label for="demo-var"><b>Demographic characteristic</b></label><select id="demo-var"></select>
+<label><input type="checkbox" id="weighted"> Use survey weights (WT)</label></div>
+<div class="chartbox tall"><canvas id="demo-time"></canvas></div>
+</section>
+
+<section><h2>3. How does the rotating panel work?</h2>
+<p class="desc">The survey design allows a respondent to be interviewed up to three times, approximately six months apart.</p>
+<div class="flow">
+<div class="step"><strong>Month 0</strong><span class="pill">Interview 1 · Fresh</span><small>First interview</small></div>
+<div class="step"><strong>Month 6</strong><span class="pill">Interview 2 · Recontact</span><small>Second interview, if the respondent participates again</small></div>
+<div class="step"><strong>Month 12</strong><span class="pill">Interview 3 · Recontact</span><small>Third and final planned interview</small></div>
+</div>
+<p class="desc">Each monthly wave contains newly sampled respondents and respondents returning for a scheduled reinterview. Not everyone invited returns. A respondent missing from a particular month cannot automatically be classified as having dropped out.</p>
+<div class="note">The University of Michigan's <a href="https://data.sca.isr.umich.edu/survey-description.php" target="_blank" rel="noopener noreferrer">Survey Description</a> states that the Surveys of Consumers were founded in 1946. Therefore, January 1978 marks the beginning of the monthly data available in this extract, not the beginning of the survey itself. Recontacts in the earliest observed waves may refer to interviews conducted before this extract begins.</div>
+</section>
+
+<section><h2>4. Fresh and returning respondents by month</h2>
+<p class="desc">Observed completed interviews classified using the survey's SAMPLE codes: fresh interviews versus second or third interviews. These are sample-composition counts, not response or attrition rates.</p>
+<div class="chartbox"><canvas id="fresh-return"></canvas></div>
+</section>
+
+<section><h2>5. Compare two survey waves</h2>
+<p class="desc">Choose two available waves. Each demographic characteristic is shown in its own table, with category shares and the percentage-point difference between the waves.</p>
+<div class="controls"><label>Wave A <select id="wave-a"></select></label>
+<label>Wave B <select id="wave-b"></select></label>
+<label><input type="checkbox" id="compare-weighted"> Use survey weights (WT)</label></div>
+<h3>Age</h3><div id="compare-age"></div>
+<h3>Gender</h3><div id="compare-gender"></div>
+<h3>Region</h3><div id="compare-region"></div>
+<h3>Education</h3><div id="compare-education"></div>
+<h3>Marital status</h3><div id="compare-marital"></div>
+</section>`;
+makeChart('total-participants','line',d.panel_monthly.map(r=>waveName(r.month)),[{label:'Total completed interviews',data:d.panel_monthly.map(r=>r.n),borderColor:'#2457a7',backgroundColor:'rgba(36,87,167,0.12)',fill:true,tension:0.15,pointRadius:0,pointHoverRadius:4,borderWidth:2}],{options:{plugins:{legend:{display:true,position:'bottom'},tooltip:{callbacks:{label:ctx=>'Completed interviews: '+fmt(ctx.parsed.y)}}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:24,maxRotation:45,minRotation:45},title:{display:true,text:'Survey month'}},y:{beginAtZero:true,title:{display:true,text:'Number of completed interviews'},ticks:{callback:v=>fmt(v)}}}}});
+const demoNames=Object.keys(d.monthly_demographics);
+$('demo-var').innerHTML=demoNames.map(n=>`<option value="${n}">${n}</option>`).join('');
+
+function renderDemo(){
+  const name=$('demo-var').value;
+  const obj=d.monthly_demographics[name];
+  const weighted=$('weighted').checked;
+  const cats=obj.categories;
+  const rows=obj.rows;
+  makeChart('demo-time','bar',rows.map(r=>waveName(r.month)),
+    cats.map((c,i)=>({
+      label:c,
+      data:rows.map(r=>(weighted?r.weighted_shares:r.shares)[c]),
+      backgroundColor:palette[i%palette.length],
+      stack:'s'
+    })),
+    {stacked:true,max:100,percent:true}
+  );
+}
+$('demo-var').onchange=renderDemo;
+$('weighted').onchange=renderDemo;
+renderDemo();
+
+makeChart('fresh-return','bar',d.panel_monthly.map(r=>waveName(r.month)),[
+  {label:'Fresh interviews',data:d.panel_monthly.map(r=>r.fresh),backgroundColor:'#2878b5',stack:'s'},
+  {label:'Returning interviews',data:d.panel_monthly.map(r=>r.recontact),backgroundColor:'#2ca25f',stack:'s'}
+],{stacked:true});
+
+// Only offer waves for which the processed file contains demographic comparisons.
+const comparisonWaves=Object.keys(d.wave_demographics).sort();
+function fillComparisonWave(id,selected){
+  $(id).innerHTML=comparisonWaves.map(m=>
+    `<option value="${m}" ${m===selected?'selected':''}>${waveName(m)}</option>`
+  ).join('');
+}
+fillComparisonWave('wave-a','202110');
+fillComparisonWave('wave-b','202111');
+
+const comparisonVariables=[
+  {name:'Age',id:'compare-age'},
+  {name:'Gender',id:'compare-gender'},
+  {name:'Region',id:'compare-region'},
+  {name:'Education',id:'compare-education'},
+  {name:'Marital status',id:'compare-marital'}
+];
+
+function renderCompare(){
+  const a=$('wave-a').value;
+  const b=$('wave-b').value;
+  const weighted=$('compare-weighted').checked;
+  for(const variable of comparisonVariables){
+    const A=d.wave_demographics[a]?.[variable.name];
+    const B=d.wave_demographics[b]?.[variable.name];
+    const target=$(variable.id);
+    if(!A||!B){
+      target.innerHTML='<p class="muted">Demographic data are unavailable for one of the selected waves.</p>';
+      continue;
+    }
+    const categories=d.monthly_demographics[variable.name].categories;
+    const rows=categories.map(category=>{
+      const av=(weighted?A.weighted_shares:A.shares)[category];
+      const bv=(weighted?B.weighted_shares:B.shares)[category];
+      const difference=(av==null||bv==null)?'—':`${bv-av>=0?'+':''}${(bv-av).toFixed(1)} pp`;
+      return [category,pct(av),pct(bv),difference];
+    });
+    target.innerHTML=table(['Category',waveName(a),waveName(b),'Difference (B − A)'],rows);
+  }
+}
+$('wave-a').onchange=renderCompare;
+$('wave-b').onchange=renderCompare;
+$('compare-weighted').onchange=renderCompare;
+renderCompare();
 }
 main().catch(e=>{$('app').innerHTML='<section><h2>Dashboard could not load</h2><p>'+e.message+'</p><p>Keep data.json in the same folder as index.html and run through Live Server or GitHub Pages.</p></section>';console.error(e)});
 </script></body></html>
