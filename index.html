@@ -87,15 +87,27 @@ makeChart('fresh-return','bar',d.panel_monthly.map(r=>waveName(r.month)),[
   {label:'Returning interviews',data:d.panel_monthly.map(r=>r.recontact),backgroundColor:'#2ca25f',stack:'s'}
 ],{stacked:true});
 
-// Only offer waves for which the processed file contains demographic comparisons.
-const comparisonWaves=Object.keys(d.wave_demographics).sort();
+// Use every month in the full monthly demographic series, not only the
+// small set of precomputed example waves stored in wave_demographics.
+const comparisonWaves=d.monthly_demographics['Age'].rows
+  .map(r=>r.month)
+  .filter((m,i,a)=>a.indexOf(m)===i)
+  .sort();
+
 function fillComparisonWave(id,selected){
+  const defaultMonth=comparisonWaves.includes(selected)?selected:comparisonWaves[comparisonWaves.length-1];
   $(id).innerHTML=comparisonWaves.map(m=>
-    `<option value="${m}" ${m===selected?'selected':''}>${waveName(m)}</option>`
+    `<option value="${m}" ${m===defaultMonth?'selected':''}>${waveName(m)}</option>`
   ).join('');
 }
 fillComparisonWave('wave-a','202110');
 fillComparisonWave('wave-b','202111');
+
+function getMonthlyDemographic(variableName,month){
+  const rows=d.monthly_demographics[variableName]?.rows || [];
+  const row=rows.find(r=>r.month===month);
+  return row ? {shares:row.shares,weighted_shares:row.weighted_shares} : null;
+}
 
 const comparisonVariables=[
   {name:'Age',id:'compare-age'},
@@ -110,8 +122,8 @@ function renderCompare(){
   const b=$('wave-b').value;
   const weighted=$('compare-weighted').checked;
   for(const variable of comparisonVariables){
-    const A=d.wave_demographics[a]?.[variable.name];
-    const B=d.wave_demographics[b]?.[variable.name];
+    const A=getMonthlyDemographic(variable.name,a);
+    const B=getMonthlyDemographic(variable.name,b);
     const target=$(variable.id);
     if(!A||!B){
       target.innerHTML='<p class="muted">Demographic data are unavailable for one of the selected waves.</p>';
